@@ -1,0 +1,242 @@
+{
+  "static": {
+    "total_py_files": 46,
+    "files": [
+      "cgl/__init__.py",
+      "cocs/__init__.py",
+      "cocs/gate_check.py",
+      "cocs/z3_verify.py",
+      "csco/__init__.py",
+      "csco/engine.py",
+      "governance/__init__.py",
+      "governance/ccp.py",
+      "governance/consensus.py",
+      "governance/meta.py",
+      "governance/meta_invariant.py",
+      "governance/mg.py",
+      "governance/ral.py",
+      "governance/sec_kernel.py",
+      "kernel/__init__.py",
+      "ledger/__init__.py",
+      "ledger/blockchain.py",
+      "ledger/trace.py",
+      "ledger/validate_chain.py",
+      "observation/__init__.py",
+      "ral/__init__.py",
+      "ral/validator.py",
+      "replay/__init__.py",
+      "replay/engine.py",
+      "replay/test_replay.py",
+      "roel/__init__.py",
+      "roel/kill_switch.py",
+      "roel/mesh.py",
+      "roel/shadow_replay.py",
+      "roel.py",
+      "roel_middleware.py",
+      "runtime/__init__.py",
+      "runtime/kernel.py",
+      "runtime/observation.py",
+      "sealing/__init__.py",
+      "sealing/sealer.py",
+      "table_killer.py",
+      "tests/test_all.py",
+      "tools/extract_runtime.py",
+      "tools/hash_artifacts.py",
+      "tools/validate_truth.py",
+      "tools/verify_chain.py",
+      "verifier/__init__.py",
+      "verifier/constraint_engine.py",
+      "verifier/mvalid.py",
+      "verifier/types.py"
+    ]
+  },
+  "imports": {
+    "modules_with_imports": 34,
+    "edges": {
+      "cgl/__init__.py": [
+        "from dataclasses import dataclass, field",
+        "from typing import Any, Dict, List, Optional",
+        "from datetime import datetime, timezone"
+      ],
+      "cocs/z3_verify.py": [
+        "import subprocess, sys, json",
+        "from cges_smt import verify"
+      ],
+      "csco/engine.py": [
+        "import hashlib, uuid"
+      ],
+      "governance/ccp.py": [
+        "from dataclasses import dataclass",
+        "from datetime import datetime, timezone",
+        "from typing import Dict, Any, List",
+        "from meta_invariant import MetaInvariantLayer, get_meta"
+      ],
+      "governance/consensus.py": [
+        "from dataclasses import dataclass, field",
+        "from typing import Dict, List, Optional, Callable, Any",
+        "import hashlib",
+        "import json",
+        "import time",
+        "from .types import Verdict, Observable, ConstraintResult",
+        "from .m_valid import MValidEngine",
+        "from .violation_reporter import ViolationReporter"
+      ],
+      "governance/meta.py": [
+        "from dataclasses import dataclass",
+        "from typing import Dict, Any, List, Optional"
+      ],
+      "governance/meta_invariant.py": [
+        "from dataclasses import dataclass",
+        "from typing import Dict, Any, List, Optional"
+      ],
+      "governance/mg.py": [
+        "from dataclasses import dataclass, field",
+        "from typing import Any, Dict, List, Optional, Set",
+        "from datetime import datetime, timezone"
+      ],
+      "governance/ral.py": [
+        "from dataclasses import dataclass, field",
+        "from typing import Any, Callable, Dict, List, Optional",
+        "from datetime import datetime, timezone",
+        "import json"
+      ],
+      "governance/sec_kernel.py": [
+        "from dataclasses import dataclass, field",
+        "from typing import Any, Callable, Dict, List, Optional, Tuple",
+        "import hashlib",
+        "import json",
+        "import time"
+      ],
+      "kernel/__init__.py": [
+        "from dataclasses import dataclass, field",
+        "from typing import Any, Dict, List, Optional",
+        "from datetime import datetime, timezone"
+      ],
+      "ledger/blockchain.py": [
+        "import hashlib, json, time, uuid"
+      ],
+      "ledger/trace.py": [
+        "from dataclasses import dataclass, field",
+        "from typing import Any, Dict, List",
+        "from datetime import datetime, timezone"
+      ],
+      "ledger/validate_chain.py": [
+        "import sys, json, hashlib",
+        "from pathlib import Path"
+      ],
+      "observation/__init__.py": [
+        "from dataclasses import dataclass, field",
+        "from typing import Any, Dict, List"
+      ],
+      "replay/engine.py": [
+        "import json, hashlib"
+      ],
+      "replay/test_replay.py": [
+        "import sys, json",
+        "from replay.engine import ReplayEngine",
+        "import hashlib"
+      ],
+      "roel/kill_switch.py": [
+        "import sys, json, os, time"
+      ],
+      "roel/mesh.py": [
+        "import sys, json, hashlib"
+      ],
+      "roel/shadow_replay.py": [
+        "import sys, json, hashlib"
+      ],
+      "roel.py": [
+        "import sys, re, hashlib, os, json",
+        "from pathlib import Path"
+      ],
+      "roel_middleware.py": [
+        "import sys, re, hashlib, json, os",
+        "from pathlib import Path"
+      ],
+      "runtime/kernel.py": [
+        "import os, json, sys, uuid",
+        "from pathlib import Path",
+        "from runtime.observation import ObservationOperator",
+        "from cocs.gate_check import COCSGate",
+        "from csco.engine import CSCOEngine",
+        "from ral.validator import RALValidator",
+        "from ledger.blockchain import LedgerBlockchain",
+        "from replay.engine import ReplayEngine",
+        "from sealing.sealer import CryptoSealer"
+      ],
+      "sealing/sealer.py": [
+        "import hashlib, json"
+      ],
+      "table_killer.py": [
+        "import sys, re"
+      ],
+      "tests/test_all.py": [
+        "import sys, os",
+        "from cocs.gate_check import COCSGate",
+        "from replay.engine import ReplayEngine",
+        "import json, hashlib",
+        "from sealing.sealer import CryptoSealer",
+        "from ral.validator import RALValidator",
+        "from csco.engine import CSCOEngine"
+      ],
+      "tools/extract_runtime.py": [
+        "import sys, json, subprocess, hashlib",
+        "from pathlib import Path"
+      ],
+      "tools/hash_artifacts.py": [
+        "import sys, json, hashlib",
+        "from pathlib import Path"
+      ],
+      "tools/validate_truth.py": [
+        "import sys, json"
+      ],
+      "tools/verify_chain.py": [
+        "import sys, json, hashlib",
+        "from pathlib import Path"
+      ],
+      "verifier/__init__.py": [
+        "from z3 import *"
+      ],
+      "verifier/constraint_engine.py": [
+        "from typing import Dict, Any"
+      ],
+      "verifier/mvalid.py": [
+        "from typing import List",
+        "from .types import Observable, ConstraintResult, Verdict",
+        "from .constraint_engine import ConstraintEngine"
+      ],
+      "verifier/types.py": [
+        "from dataclasses import dataclass",
+        "from enum import Enum",
+        "from typing import Any, Dict, List, Optional"
+      ]
+    }
+  },
+  "execution": {
+    "pytest": {
+      "exit_code": 0,
+      "stdout": ".....                                                                    [100%]\n5 passed in 0.04s\n",
+      "stderr": "",
+      "log_hash": "ad430bcd751b836a"
+    },
+    "roel_gate": {
+      "exit_code": 0,
+      "stdout": "VIEW_STATE: COMPLETE\nROEL CI truth gate test.\n",
+      "stderr": "",
+      "log_hash": "b4d17331b5c37123",
+      "gate_passed": true
+    },
+    "roel_table_reject": {
+      "exit_code": 1,
+      "stderr": "ROEL REJECTED TABLE_FORBIDDEN; MULTI_RENDERER",
+      "log_hash": "62ebc3154b3f5430",
+      "table_blocked": true
+    },
+    "hash_chain": {
+      "exit_code": 0,
+      "chain_valid": true,
+      "log_hash": "a46e95734a710dce"
+    }
+  },
+  "commit": "e3627fcac82b1240f220f4ca64b44cef8f236d84"
+}
