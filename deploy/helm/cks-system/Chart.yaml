@@ -1,0 +1,15 @@
+apiVersion: v2
+name: gsai-cks
+description: Constraint-based Epistemic Control System (CKS / GSAI / AI100)
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - cks
+  - gsai
+  - cocs
+  - constraint-system
+  - ai100
+home: https://github.com/baron1277/gsai-cks-system
+sources:
+  - https://github.com/baron1277/gsai-cks-system

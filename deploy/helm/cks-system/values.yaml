@@ -1,0 +1,68 @@
+# CKS v1.0 — Global values
+# One-command deploy: helm install gsai ./deploy/helm/cks-system
+# One-command upgrade: helm upgrade gsai ./deploy/helm/cks-system
+# One-command rollback: helm rollback gsai 1
+
+# ── Replica scaling ──────────────────────────────────────────────────
+replicaCount: 3
+
+# ── Container image ──────────────────────────────────────────────────
+image:
+  repository: gsai-runtime
+  tag: latest
+  pullPolicy: Always
+
+# ── Resource limits ─────────────────────────────────────────────────
+resources:
+  limits:
+    cpu: "2"
+    memory: "4Gi"
+  requests:
+    cpu: 500m
+    memory: 256Mi
+
+# ── Compute layer ────────────────────────────────────────────────────
+runtime:
+  port: 8080
+
+# ── Constraint gate ──────────────────────────────────────────────────
+cocs:
+  enabled: true
+  mode: enforce   # enforce | audit | shadow
+  port: 9000
+
+# ── Immutable audit layer ────────────────────────────────────────────
+ledger:
+  persistence: true
+  storage: 10Gi
+  port: 7000
+
+# ── Governance layer ─────────────────────────────────────────────────
+governance:
+  mode: strict    # strict | shadow | audit
+  ccp_enabled: true
+  mg_enabled: true
+  ral_enabled: true
+  port: 8081
+
+# ── Observation operator ─────────────────────────────────────────────
+observation:
+  port: 8082
+
+# ── Reality alignment ────────────────────────────────────────────────
+ral:
+  threshold: 0.95
+  drift_alert: true
+
+# ── Rollout phase ───────────────────────────────────────────────────
+# 1 = shadow      (observe, no enforcement)
+# 2 = soft        (warnings, no blocking)
+# 3 = enforce     (blocking gate — default)
+# 4 = autonomy    (self-governed under constraints)
+rolloutPhase: 3
+
+# ── Ingress ──────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  host: gsai.local
+  path: /

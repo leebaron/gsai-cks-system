@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cocs-gate
+  namespace: cks-system
+  labels:
+    app: gsai
+    component: cocs
+spec:
+  selector:
+    app: gsai
+    component: cocs
+  ports:
+    - port: 9000
+      targetPort: 9000
+      name: constraint
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cocs-gate
+  namespace: cks-system
+  labels:
+    app: gsai
+    component: cocs
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gsai
+      component: cocs
+  template:
+    metadata:
+      labels:
+        app: gsai
+        component: cocs
+    spec:
+      containers:
+        - name: cocs
+          image: gsai-runtime:latest
+          command: ["python", "-m", "cocs.m_valid"]
+          env:
+            - name: CKS_MODE
+              value: "enforce"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 9000

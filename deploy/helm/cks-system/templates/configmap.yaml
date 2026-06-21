@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cks-config
+  namespace: {{ .Values.namespace | default "cks-system" }}
+data:
+  CKS_MODE: "{{ .Values.cocs.mode }}"
+  COCS_ENABLED: "{{ .Values.cocs.enabled }}"
+  GOVERNANCE_MODE: "{{ .Values.governance.mode }}"
+  CCP_ENABLED: "{{ .Values.governance.ccp_enabled }}"
+  MG_ENABLED: "{{ .Values.governance.mg_enabled }}"
+  RAL_ENABLED: "{{ .Values.governance.ral_enabled }}"
+  RAL_THRESHOLD: "{{ .Values.ral.threshold }}"
+  ROLLOUT_PHASE: "{{ .Values.rolloutPhase }}"

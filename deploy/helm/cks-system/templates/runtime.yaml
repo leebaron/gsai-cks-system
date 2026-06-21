@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gsai-runtime
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: gsai
+    component: runtime
+    cks-mode: {{ .Values.mode }}
+spec:
+  replicas: {{ .Values.runtime.replicas }}
+  selector:
+    matchLabels:
+      app: gsai
+      component: runtime
+  template:
+    metadata:
+      labels:
+        app: gsai
+        component: runtime
+    spec:
+      containers:
+        - name: runtime
+          image: "{{ .Values.images.repository }}:{{ .Values.images.tag }}"
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.runtime.port }}
+              name: http
+          env:
+            - name: CKS_MODE
+              value: {{ .Values.mode }}
+            - name: CKS_LEDGER_HOST
+              value: "ledger-0.ledger.{{ .Values.namespace }}"
+            - name: CKS_GOVERNANCE
+              value: "active"
+          resources:
+{{ toYaml .Values.runtime.resources | indent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.runtime.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gsai-runtime
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    app: gsai
+    component: runtime
+  ports:
+    - port: {{ .Values.runtime.port }}
+      targetPort: {{ .Values.runtime.port }}
+      name: http

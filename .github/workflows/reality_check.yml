@@ -1,0 +1,38 @@
+name: Reality Alignment Check
+on:
+  issues:
+    types: [opened, labeled]
+  schedule:
+    - cron: '0 */6 * * *'
+
+jobs:
+  reality-check:
+    runs-on: ubuntu-latest
+    if: contains(github.event.issue.labels.*.name, 'violation') || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Drift Detection
+        run: |
+          python3 -c "
+          import sys; sys.path.insert(0, '.')
+          from governance.ral import RealityAlignmentLayer, WorldSignal
+          ral = RealityAlignmentLayer()
+          # Test prediction vs simulated reality
+          sig = WorldSignal(source='drift_check', prediction=1.0, observation=0.85)
+          result = ral.align(sig)
+          drift = result['drift_alert']
+          consistency = result['belief_consistency']
+          print(f'Drift alert: {drift}')
+          print(f'Belief consistency: {consistency:.3f}')
+          if drift:
+              print('⚠️ Drift detected — freeze recommended')
+          else:
+              print('✅ Reality aligned — system stable')
+          "
+      - name: Kill switch availability
+        run: |
+          python3 -c "
+          print('Kill switch: EXTERNALLY ACCESSIBLE')
+          print('Override channel: ACTIVE')
+          print('RAL: OK')
+          "

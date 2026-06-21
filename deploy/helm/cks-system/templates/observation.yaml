@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gsai-observation
+  namespace: {{ .Values.namespace | default "cks-system" }}
+  labels:
+    app: gsai
+    component: observation
+    cks-mode: {{ .Values.cocs.mode }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gsai
+      component: observation
+  template:
+    metadata:
+      labels:
+        app: gsai
+        component: observation
+    spec:
+      containers:
+        - name: observation
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "observation.observation_operator"]
+          ports:
+            - containerPort: {{ .Values.observation.port }}
+              name: obs
+          env:
+            - name: CKS_MODE
+              value: {{ .Values.cocs.mode }}
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: observation
+  namespace: {{ .Values.namespace | default "cks-system" }}
+spec:
+  selector:
+    app: gsai
+    component: observation
+  ports:
+    - port: {{ .Values.observation.port }}
+      targetPort: {{ .Values.observation.port }}
+      name: obs
