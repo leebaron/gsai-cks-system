@@ -60,6 +60,18 @@ jobs:
         run: |
           python tools/verify_chain.py --commit ${{ github.sha }} && echo "CHAIN: VALID" || (echo "CHAIN: BROKEN"; exit 1)
 
+      - name: Capture Artifacts
+        run: |
+          python tools/capture_artifacts.py CKS_RUN_OUTPUT/artifact && echo "CAPTURE: OK" || (echo "CAPTURE: FAIL"; exit 1)
+
+      - name: Replay Verification
+        run: |
+          python tools/replay.py CKS_RUN_OUTPUT/artifact && echo "REPLAY: MATCH" || (echo "REPLAY: MISMATCH"; exit 1)
+
+      - name: Verify Hash Gate
+        run: |
+          python tools/verify_hash.py CKS_RUN_OUTPUT/artifact && echo "VERIFY: ALL GATES PASS" || (echo "VERIFY: GATE FAILURE"; exit 1)
+
       - name: Proof Gate — All checks must pass
         run: |
           echo "Proof Gate: system is VERIFIABLE"
@@ -67,8 +79,9 @@ jobs:
           echo "  ROEL semantics -> PASS"
           echo "  ROEL determinism -> PASS"
           echo "  Hash chain -> VALID"
-          echo "  Replay -> VERIFIED"
-          echo "  Artifact hash -> BOUND"
+          echo "  Replay -> MATCH"
+          echo "  Artifact capture -> BOUND"
+          echo "  Env hash -> ${{ env.RUNNER_ENVIRONMENT || 'stable' }}"
           echo "  Commit binding -> ${{ github.sha }}"
 
   security:
