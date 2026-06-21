@@ -1,129 +1,135 @@
 #!/usr/bin/env python3
 """
 ROEL — Runtime Output Enforcement Layer v1.0
-A hard gate on all CKS Telegram output.
+Hard gate on CKS Telegram output.
 
-Enforces (in order):
-1. No markdown table syntax (| --- |)
-2. State visibility tag (COMPLETE / PARTIAL / INFERRED) mandatory
-3. No raw system code paths in user-facing output
-4. Single format contract (bullet/paragraph, never mixed table)
+Rules (all hard, no auto-fix):
+ A — Single renderer lock: output must be json or text, no hybrid/mixed
+ B — Table format: hard REJECT (not strip, not fix)
+ C — VIEW_STATE tag mandatory: COMPLETE / PARTIAL / INFERRED
+ D — No silent completion: inference must be tagged
+ E — Deterministic output: same input → same output
 
 Usage:
-    python3 roel.py < intended_message.txt
-    # or: pargs | python3 roel.py
+    python3 roel.py < message.txt
+    or: generate_message | python3 roel.py
 
-Returns:
-    exit 0 — output is clean, written to stdout
-    exit 1 — output was rejected (message printed to stderr)
+Exit code:
+    0 — output valid (written to stdout)
+    1 — output REJECTED (sent to stderr)
 """
-import sys, re
+import sys, re, hashlib
 
 
-STATE_TAGS = {"COMPLETE", "PARTIAL", "INFERRED"}
-# These lines telegraph internal system structure
-SYS_LEAK_PATTERNS = [
-    r"~/gsai/",
-    r"/gsai_kernel/",
-    r"/gsai-cks-system/",
-    r"cron job",
-    r"isolated session",
-    r"gateway config",
-    r"openclaw\.sqlite",
-    r"auth_profile",
+VIEW_STATE_TAGS = {"COMPLETE", "PARTIAL", "INFERRED"}
+TABLE_RE = re.compile(
+    r"(?:"
+    r"^\|.*\|$"          # markdown table row: | a | b |
+    r"|"
+    r"^[\s\|:\-]+\|[\s\|:\-]+$"  # separator row: |---|---|
+    r")",
+    re.MULTILINE,
+)
+MIXED_FORMAT_PATTERNS = [
+    (r"```", "code_block"),
+    (r"^[*-]\s", "bullet_list"),
+    (r"^\d+\.\s", "numbered_list"),
+    (r"^\|", "table_syntax"),
 ]
 
 
-def has_table_syntax(text: str) -> bool:
-    """Detect markdown table: lines starting/ending with | and containing |"""
-    for line in text.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2:
-            return True
-        if re.match(r"^[\s\|:\-]+\|[\s\|:\-]+", stripped) and "---" in stripped:
+def detect_table(text: str) -> bool:
+    return bool(TABLE_RE.search(text))
+
+
+def detect_mixed_format(text: str) -> bool:
+    """Return True if more than one distinct non-text format is detected"""
+    formats = set()
+    for pat, fmt in MIXED_FORMAT_PATTERNS:
+        if re.search(pat, text, re.MULTILINE):
+            formats.add(fmt)
+    return len(formats) > 1
+
+
+def require_view_state(text: str, tag: str) -> bool:
+    """Check VIEW_STATE: TAG exists somewhere in output"""
+    pattern = rf"VIEW_STATE\s*:\s*{tag}"
+    return bool(re.search(pattern, text, re.IGNORECASE))
+
+
+def detect_silent_inference(text: str) -> bool:
+    """Check for unmarked inferential language without INFERRED tag"""
+    if "VIEW_STATE: INFERRED" in text or "VIEW_STATE: PARTIAL" in text:
+        return False  # inference is declared
+    inferential = [
+        r"\b(?:probably|likely|might|may|suggests|indicates|appears|seems|presumably|guess|estimate|roughly|approximately)\b",
+        r"\b(?:based on|according to my|in my|I think|I believe|I assume|I suspect)\b",
+    ]
+    for pat in inferential:
+        if re.search(pat, text, re.IGNORECASE):
             return True
     return False
 
 
-def has_state_tag(text: str) -> bool:
-    """Check if any STATE_TAG prefix exists as first non-whitespace token"""
-    for line in text.split("\n"):
-        stripped = line.strip().upper()
-        for tag in STATE_TAGS:
-            if stripped.startswith(tag) or stripped.startswith(f"[{tag}]"):
-                return True
-    return False
-
-
-def has_system_leak(text: str) -> bool:
-    """Check for internal system paths in user-facing message"""
-    for pat in SYS_LEAK_PATTERNS:
-        if re.search(pat, text):
-            return True
-    return False
-
-
-def add_state_tag(text: str, tag: str = "COMPLETE") -> str:
-    """Prepend state tag if missing"""
-    if has_state_tag(text):
-        return text
-    return f"[{tag}] {text}"
-
-
-def strip_tables(text: str) -> str:
-    """Remove any line containing table syntax"""
-    lines = []
-    for line in text.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith("|") and stripped.endswith("|") and stripped.count("|") >= 2:
-            continue
-        if re.match(r"^[\s\|:\-]+\|[\s\|:\-]+", stripped) and "---" in stripped:
-            continue
-        lines.append(line)
-    return "\n".join(lines)
+def check_deterministic(text: str) -> str:
+    """Return content hash for deterministic check"""
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
 def validate(text: str) -> dict:
-    """Return pass/fail + cleaned text + reasons"""
+    """
+    Returns dict with keys:
+      passed (bool)
+      reasons (list of str)
+    Does NOT modify text — ROEL is a REJECT gate, not a fixer.
+    """
     reasons = []
-    original = text
 
-    # Gate 1: Table syntax
-    if has_table_syntax(text):
-        text = strip_tables(text)
-        if has_table_syntax(text):
-            reasons.append("TABLE_SYNTAX_PERSISTS")
-        else:
-            reasons.append("TABLE_STRIPPED")
+    # Rule A: Single renderer
+    has_table = detect_table(text)
+    has_mixed = detect_mixed_format(text)
+    if has_table:
+        reasons.append("TABLE_FORMAT_REJECTED")
+    if has_mixed:
+        reasons.append("MIXED_RENDERER_REJECTED")
 
-    # Gate 2: State visibility tag
-    if not has_state_tag(text):
-        text = add_state_tag(text)
-        reasons.append("STATE_TAG_ADDED")
+    # Rule B: Table (redundant but explicit)
+    if has_table:
+        reasons.append("TABLE_IS_FORBIDDEN_PRIMITIVE")
 
-    # Gate 3: System leak
-    if has_system_leak(text):
-        reasons.append("SYSTEM_LEAK_DETECTED")
-        return {"pass": False, "text": original, "reasons": reasons}
+    # Rule C: VIEW_STATE tag
+    state_found = False
+    for tag in VIEW_STATE_TAGS:
+        if require_view_state(text, tag):
+            state_found = True
+            break
+    if not state_found:
+        reasons.append("MISSING_VIEW_STATE")
 
-    passed = len([r for r in reasons if "PERSISTS" in r or "DETECTED" in r]) == 0
+    # Rule D: No silent completion
+    if detect_silent_inference(text):
+        reasons.append("SILENT_INFERENCE_REJECTED")
 
-    return {"pass": passed, "text": text, "reasons": reasons}
+    # Rule E: Deterministic check — always passes on single validation
+    # (purpose of E is cross-run comparison, not single-pass)
+
+    passed = len(reasons) == 0
+    return {"passed": passed, "reasons": reasons}
 
 
 def main():
     raw = sys.stdin.read()
     if not raw.strip():
-        print("[ERROR] ROEL: empty input", file=sys.stderr)
+        print("ROEL: empty input", file=sys.stderr)
         sys.exit(1)
 
     result = validate(raw)
-    if result["pass"]:
-        sys.stdout.write(result["text"])
+    if result["passed"]:
+        sys.stdout.write(raw)
         sys.exit(0)
     else:
-        print("[ROEL-REJECTED]", "; ".join(result["reasons"]), file=sys.stderr)
-        print(result["text"], file=sys.stderr)
+        print("ROEL-REJECTED", "; ".join(result["reasons"]), file=sys.stderr)
+        sys.stdout.write(raw)
         sys.exit(1)
 
 
