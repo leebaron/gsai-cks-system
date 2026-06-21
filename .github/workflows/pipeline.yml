@@ -20,103 +20,23 @@ jobs:
           python-version: "3.11"
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Unit tests
-        run: |
-          python -m pytest tests/ -v || python -m pytest -v --ignore=deploy --ignore=charts 2>/dev/null || echo "(pytest dir not yet created — running module tests)"
-      - name: COCS Gate Check
-        run: python -c "from cocs.gate_check import COCSGate; g=COCSGate(); r=g.check({'value':'test','confidence':1.0}); print(r); assert r['status']=='PASS'"
-      - name: Replay engine test
-        run: python replay/test_replay.py
-      - name: Sealing test
-        run: python -c "from sealing.sealer import CryptoSealer; c=CryptoSealer(); s=c.seal({'index':1,'data':'test'}); print(f'Seal: {s}'); assert len(s)==64"
-      - name: Z3 Verification
-        run: python cocs/z3_verify.py
 
-      - name: ROEL Hard Gate (clean message)
-        run: |
-          echo 'VIEW_STATE: COMPLETE\nROEL CI test.' | python roel.py && echo "ROEL: PASS" || (echo "ROEL: FAIL"; exit 1)
+      - name: Full Pipeline Execution
+        run: python ci/entrypoint.py && echo "PIPELINE: ALL GATES PASS" || (echo "PIPELINE: GATE FAIL"; exit 1)
 
-      - name: ROEL Table Rejection
-        run: |
-          echo 'VIEW_STATE: COMPLETE\n| col | val |' | python roel.py 2>/dev/null && (echo "ROEL: table should be REJECTED"; exit 1) || echo "ROEL: table correctly REJECTED"
-
-      - name: ROEL Mesh Consensus
-        run: |
-          echo 'VIEW_STATE: COMPLETE\nMesh CI test.' | python roel/mesh.py && echo "MESH: PASS" || (echo "MESH: FAIL"; exit 1)
-
-      - name: Ledger Hash Chain Validation
-        run: |
-          echo '[{"index":0,"hash":"0000","prev_hash":"GENESIS"},{"index":1,"hash":"abcd","prev_hash":"0000"}]' | python ledger/validate_chain.py && echo "CHAIN: VALID" || (echo "CHAIN: INVALID"; exit 1)
-
-      - name: Hash Artifacts
-        run: |
-          python tools/hash_artifacts.py && echo "ARTIFACT_HASH: OK" || echo "ARTIFACT_HASH: MISSING"
-
-      - name: Verify Chain Integrity
-        run: |
-          python tools/verify_chain.py --commit ${{ github.sha }} && echo "CHAIN: VALID" || (echo "CHAIN: BROKEN"; exit 1)
-
-      - name: Capture Artifacts
-        run: |
-          python tools/capture_artifacts.py CKS_RUN_OUTPUT/artifact && echo "CAPTURE: OK" || (echo "CAPTURE: FAIL"; exit 1)
-
-      - name: Replay Verification
-        run: |
-          python tools/replay.py CKS_RUN_OUTPUT/artifact && echo "REPLAY: MATCH" || (echo "REPLAY: MISMATCH"; exit 1)
-
-      - name: Verify Hash Gate
-        run: |
-          python tools/verify_hash.py CKS_RUN_OUTPUT/artifact && echo "VERIFY: ALL GATES PASS" || (echo "VERIFY: GATE FAILURE"; exit 1)
-
-      - name: Detect Anomaly
-        run: |
-          python tools/detect_anomaly.py && echo "ANOMALY: NONE" || echo "ANOMALY: $(cat CKS_RUN_OUTPUT/artifact/anomaly_result.json | python -c 'import sys, json; d=json.load(sys.stdin); print(d["status"])' | tail -1)"
-
-      - name: Decision Engine
-        run: |
-          python tools/decision_engine.py CKS_RUN_OUTPUT/artifact/anomaly_result.json
-
-      - name: Self-Healing Proof Gate
-        run: |
-          echo "Self-Healing CI Gate:"
-          echo "  pytest -> PASS"
-          echo "  Replay -> MATCH"
-          echo "  Hash chain -> VALID"
-          echo "  Anomaly -> NONE"
-          echo "  Decision -> PASS"
-          echo "  Commit -> ${{ github.sha }}"
-
-      - name: Consensus Node A
-        run: python tools/consensus_node.py --node-id "ci-node-a" && echo "NODE_A: PASS"
-
-      - name: Consensus Node B (simulated)
-        run: python tools/consensus_node.py --node-id "ci-node-b" && echo "NODE_B: PASS"
-
-      - name: Consensus Node C (simulated)
-        run: python tools/consensus_node.py --node-id "ci-node-c" && echo "NODE_C: PASS"
-
-      - name: Consensus Aggregator
-        run: |
-          python tools/consensus_aggregator.py CKS_RUN_OUTPUT/artifact && echo "CONSENSUS: COMMIT" || (echo "CONSENSUS: FAILED"; exit 1)
-
-      - name: Consensus Kill Switch
-        run: python tools/consensus_kill_switch.py CKS_RUN_OUTPUT/artifact/consensus_result.json && echo "CLUSTER: HEALTHY" || (echo "CLUSTER: HALTED"; exit 1)
-
-      - name: Distributed Proof Gate
-        run: |
-          echo "Distributed Consensus CI Gate:"
-          echo "  pytest -> PASS"
-          echo "  Replay -> MATCH"
-          echo "  Hash chain -> VALID"
-          echo "  Anomaly -> NONE"
-          echo "  Decision -> PASS"
-          echo "  Nodes -> A PASS, B PASS, C PASS"
-          echo "  Consensus -> COMMIT"
-          echo "  Cluster -> HEALTHY"
-          echo "  Commit -> ${{ github.sha }}"
+  formal_proof:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Formal Model Verification
+        run: python formal/checker.py && echo "FORMAL: ALL INVARIANTS PASS" || (echo "FORMAL: MODEL VIOLATION"; exit 1)
 
   security:
-    needs: verify
+    needs: formal_proof
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -130,22 +50,10 @@ jobs:
       - name: Dependency audit
         run: pip-audit || echo "(warnings only)"
       - name: SAST scan
-        run: bandit -q -r runtime cocs csco ral replay ledger sealing --skip=B101
-
-  formal_proof:
-    needs: verify
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - name: Formal Model Verification
-        run: |
-          python formal/verify_model.py && echo "FORMAL: ALL INVARIANTS PASS" || (echo "FORMAL: MODEL VIOLATION"; exit 1)
+        run: bandit -q -r runtime roel consensus replay ledger --skip=B101
 
   build:
-    needs: [security, formal_proof]
+    needs: security
     runs-on: ubuntu-latest
     permissions:
       contents: read
