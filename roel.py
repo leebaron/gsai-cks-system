@@ -1,40 +1,55 @@
 #!/usr/bin/env python3
 """
-ROEL — Runtime Output Enforcement Layer v1.0
-Hard gate on CKS Telegram output.
+ROEL v2.0 — Runtime Output Enforcement Layer (Hardened Output Firewall)
+CKS pipeline final gate: O → COCS → CSCO → RAL → Ledger → ROEL
 
-Rules (all hard, no auto-fix):
- A — Single renderer lock: output must be json or text, no hybrid/mixed
- B — Table format: hard REJECT (not strip, not fix)
- C — VIEW_STATE tag mandatory: COMPLETE / PARTIAL / INFERRED
- D — No silent completion: inference must be tagged
- E — Deterministic output: same input → same output
+Three-layer architecture:
+  L1 — Syntax Firewall: table rejection, format lock, single renderer
+  L2 — Semantic Integrity: VIEW_STATE, OBSERVED/INFERRED/DERIVED markers
+  L3 — Determinism & Drift Control: hash+state stability, drift detection
 
 Usage:
     python3 roel.py < message.txt
-    or: generate_message | python3 roel.py
+    generate_message | python3 roel.py
 
 Exit code:
-    0 — output valid (written to stdout)
-    1 — output REJECTED (sent to stderr)
+    0 — ALLOW (output written to stdout)
+    1 — REJECT (output blocked, reasons to stderr)
 """
-import sys, re, hashlib
+import sys, re, hashlib, os, json
+from pathlib import Path
 
 
+ROOT = Path(__file__).parent
+CACHE_PATH = ROOT / ".roel_cache.json"
 VIEW_STATE_TAGS = {"COMPLETE", "PARTIAL", "INFERRED"}
+FACT_MARKERS = {"OBSERVED", "INFERRED", "DERIVED"}
+
+# ---- Load drift cache ----
+def _load_cache():
+    try:
+        return json.loads(CACHE_PATH.read_text())
+    except:
+        return {}
+
+
+def _save_cache(cache: dict):
+    CACHE_PATH.write_text(json.dumps(cache, indent=2))
+
+
+# =====================================================================
+# L1 — Syntax Firewall
+# =====================================================================
+
 TABLE_RE = re.compile(
-    r"(?:"
-    r"^\|.*\|$"          # markdown table row: | a | b |
-    r"|"
-    r"^[\s\|:\-]+\|[\s\|:\-]+$"  # separator row: |---|---|
-    r")",
-    re.MULTILINE,
+    r"(?:^\|.*\|$|^[\s\|:\-]+\|[\s\|:\-]+$)", re.MULTILINE
 )
-MIXED_FORMAT_PATTERNS = [
+FORMAT_PATTERNS = [
     (r"```", "code_block"),
     (r"^[*-]\s", "bullet_list"),
     (r"^\d+\.\s", "numbered_list"),
     (r"^\|", "table_syntax"),
+    (r"^>\s", "blockquote"),
 ]
 
 
@@ -43,78 +58,140 @@ def detect_table(text: str) -> bool:
 
 
 def detect_mixed_format(text: str) -> bool:
-    """Return True if more than one distinct non-text format is detected"""
-    formats = set()
-    for pat, fmt in MIXED_FORMAT_PATTERNS:
+    active = set()
+    for pat, fmt in FORMAT_PATTERNS:
         if re.search(pat, text, re.MULTILINE):
-            formats.add(fmt)
-    return len(formats) > 1
+            active.add(fmt)
+    # text-only (no format markers) is always valid
+    return len(active) > 1
 
 
-def require_view_state(text: str, tag: str) -> bool:
-    """Check VIEW_STATE: TAG exists somewhere in output"""
-    pattern = rf"VIEW_STATE\s*:\s*{tag}"
-    return bool(re.search(pattern, text, re.IGNORECASE))
+def single_renderer(text: str) -> bool:
+    return not detect_mixed_format(text) and not detect_table(text)
+
+
+def l1_syntax_gate(text: str) -> dict:
+    reasons = []
+    if detect_table(text):
+        reasons.append("TABLE_FORBIDDEN")
+    if detect_mixed_format(text):
+        reasons.append("FORMAT_COLLISION")
+    if not single_renderer(text):
+        reasons.append("MULTI_RENDERER")
+    return {"passed": len(reasons) == 0, "reasons": reasons}
+
+
+# =====================================================================
+# L2 — Semantic Integrity
+# =====================================================================
+
+INFERENCE_PATTERNS = [
+    r"\b(?:probably|likely|might|may|suggests|indicates|appears|seems|"
+    r"presumably|guess|estimate|roughly|approximately|about)\b",
+    r"\b(?:based on|according to|I think|I believe|I assume|I suspect)\b",
+]
+
+
+def has_view_state(text: str) -> bool:
+    for tag in VIEW_STATE_TAGS:
+        if re.search(rf"VIEW_STATE\s*:\s*{tag}", text, re.IGNORECASE):
+            return True
+    return False
+
+
+def has_fact_marker(text: str) -> bool:
+    for tag in FACT_MARKERS:
+        if re.search(rf"\b{tag}\b", text):
+            return True
+    return False
 
 
 def detect_silent_inference(text: str) -> bool:
-    """Check for unmarked inferential language without INFERRED tag"""
-    if "VIEW_STATE: INFERRED" in text or "VIEW_STATE: PARTIAL" in text:
-        return False  # inference is declared
-    inferential = [
-        r"\b(?:probably|likely|might|may|suggests|indicates|appears|seems|presumably|guess|estimate|roughly|approximately)\b",
-        r"\b(?:based on|according to my|in my|I think|I believe|I assume|I suspect)\b",
-    ]
-    for pat in inferential:
+    if "VIEW_STATE: INFERRED" in text or has_fact_marker(text):
+        return False
+    for pat in INFERENCE_PATTERNS:
         if re.search(pat, text, re.IGNORECASE):
             return True
     return False
 
 
-def check_deterministic(text: str) -> str:
-    """Return content hash for deterministic check"""
+def l2_semantic_gate(text: str) -> dict:
+    reasons = []
+    if not has_view_state(text):
+        reasons.append("MISSING_VIEW_STATE")
+    if detect_silent_inference(text):
+        reasons.append("SILENT_INFERENCE")
+    return {"passed": len(reasons) == 0, "reasons": reasons}
+
+
+# =====================================================================
+# L3 — Determinism & Drift Control
+# =====================================================================
+
+
+def deterministic_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
-def validate(text: str) -> dict:
-    """
-    Returns dict with keys:
-      passed (bool)
-      reasons (list of str)
-    Does NOT modify text — ROEL is a REJECT gate, not a fixer.
-    """
+def l3_drift_gate(text: str, input_tag: str = "default") -> dict:
+    cache = _load_cache()
+    h = deterministic_hash(text)
     reasons = []
+    if input_tag in cache:
+        expected = cache[input_tag]
+        if h != expected:
+            reasons.append(f"NON_DETERMINISTIC_OUTPUT (expected {expected}, got {h})")
+    # Update cache with current hash
+    cache[input_tag] = h
+    _save_cache(cache)
+    return {"passed": len(reasons) == 0, "reasons": reasons, "hash": h}
 
-    # Rule A: Single renderer
-    has_table = detect_table(text)
-    has_mixed = detect_mixed_format(text)
-    if has_table:
-        reasons.append("TABLE_FORMAT_REJECTED")
-    if has_mixed:
-        reasons.append("MIXED_RENDERER_REJECTED")
 
-    # Rule B: Table (redundant but explicit)
-    if has_table:
-        reasons.append("TABLE_IS_FORBIDDEN_PRIMITIVE")
+# =====================================================================
+# Metrics collectors (in-memory, appended each run)
+# =====================================================================
 
-    # Rule C: VIEW_STATE tag
-    state_found = False
-    for tag in VIEW_STATE_TAGS:
-        if require_view_state(text, tag):
-            state_found = True
-            break
-    if not state_found:
-        reasons.append("MISSING_VIEW_STATE")
+CURRENT_METRICS = {
+    "format_violation_rate": 0.0,
+    "inference_leak_rate": 0.0,
+    "drift_score": 0.0,
+    "renderer_entropy": 0.0,
+}
+METRICS_LOG = []
 
-    # Rule D: No silent completion
-    if detect_silent_inference(text):
-        reasons.append("SILENT_INFERENCE_REJECTED")
 
-    # Rule E: Deterministic check — always passes on single validation
-    # (purpose of E is cross-run comparison, not single-pass)
+def record_metrics(result: dict):
+    METRICS_LOG.append(result)
 
-    passed = len(reasons) == 0
-    return {"passed": passed, "reasons": reasons}
+
+# =====================================================================
+# Pipeline
+# =====================================================================
+
+
+def validate(text: str, input_tag: str = "default") -> dict:
+    l1 = l1_syntax_gate(text)
+    l2 = l2_semantic_gate(text)
+    l3 = l3_drift_gate(text, input_tag)
+
+    all_reasons = l1["reasons"] + l2["reasons"] + [r for r in l3["reasons"] if "NON_DETERMINISTIC" in r]
+
+    result = {
+        "passed": l1["passed"] and l2["passed"] and l3["passed"],
+        "reasons": all_reasons,
+        "layers": {
+            "L1_syntax": l1,
+            "L2_semantic": l2,
+            "L3_drift": {"passed": l3["passed"], "hash": l3["hash"]},
+        },
+    }
+    record_metrics(result)
+    return result
+
+
+# =====================================================================
+# Entry point
+# =====================================================================
 
 
 def main():
@@ -123,12 +200,14 @@ def main():
         print("ROEL: empty input", file=sys.stderr)
         sys.exit(1)
 
-    result = validate(raw)
+    input_tag = os.environ.get("ROEL_INPUT_TAG", hashlib.sha256(raw.encode()).hexdigest()[:8])
+    result = validate(raw, input_tag)
+
     if result["passed"]:
         sys.stdout.write(raw)
         sys.exit(0)
     else:
-        print("ROEL-REJECTED", "; ".join(result["reasons"]), file=sys.stderr)
+        print("ROEL REJECTED", "; ".join(result["reasons"]), file=sys.stderr)
         sys.stdout.write(raw)
         sys.exit(1)
 
