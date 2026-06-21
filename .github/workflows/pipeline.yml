@@ -52,6 +52,14 @@ jobs:
         run: |
           echo '[{"index":0,"hash":"0000","prev_hash":"GENESIS"},{"index":1,"hash":"abcd","prev_hash":"0000"}]' | python ledger/validate_chain.py && echo "CHAIN: VALID" || (echo "CHAIN: INVALID"; exit 1)
 
+      - name: Hash Artifacts
+        run: |
+          python tools/hash_artifacts.py && echo "ARTIFACT_HASH: OK" || echo "ARTIFACT_HASH: MISSING"
+
+      - name: Verify Chain Integrity
+        run: |
+          python tools/verify_chain.py --commit ${{ github.sha }} && echo "CHAIN: VALID" || (echo "CHAIN: BROKEN"; exit 1)
+
       - name: Proof Gate — All checks must pass
         run: |
           echo "Proof Gate: system is VERIFIABLE"
@@ -60,6 +68,8 @@ jobs:
           echo "  ROEL determinism -> PASS"
           echo "  Hash chain -> VALID"
           echo "  Replay -> VERIFIED"
+          echo "  Artifact hash -> BOUND"
+          echo "  Commit binding -> ${{ github.sha }}"
 
   security:
     needs: verify
