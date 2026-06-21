@@ -132,8 +132,20 @@ jobs:
       - name: SAST scan
         run: bandit -q -r runtime cocs csco ral replay ledger sealing --skip=B101
 
+  formal_proof:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Formal Model Verification
+        run: |
+          python formal/verify_model.py && echo "FORMAL: ALL INVARIANTS PASS" || (echo "FORMAL: MODEL VIOLATION"; exit 1)
+
   build:
-    needs: security
+    needs: [security, formal_proof]
     runs-on: ubuntu-latest
     permissions:
       contents: read
